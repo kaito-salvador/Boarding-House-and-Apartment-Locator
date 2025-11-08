@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Locator — Boarding & Apartments (v2)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* Existing styles remain unchanged */
+    :root {
+      --bg: #f6f9fc;
+      --card: #ffffff;
+      --brand: #0b2545;
+      --accent: #ff8a00;
+      --muted: #6b7280;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;background:var(--bg);color:#0b1724}
+    header{background:linear-gradient(90deg,#11213a,#0b2545);color:white;padding:20px 24px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:40}
+    header h1{margin:0;font-size:1.25rem;cursor:pointer}
+    .header-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+    .btn{padding:8px 12px;border-radius:8px;border:0;cursor:pointer;font-weight:600}
+    .btn-primary{background:var(--accent);color:#061426}
+    .btn-ghost{background:transparent;color:white;border:1px solid rgba(255,255,255,.12)}
+    main{padding:28px;max-width:1200px;margin:0 auto}
+    .search{display:flex;gap:12px;align-items:center;margin-bottom:20px}
+    .search select,.search input{padding:10px;border-radius:10px;border:1px solid #e5eef8;background:white;min-width:160px}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .card{background:var(--card);border-radius:12px;overflow:hidden;box-shadow:0 6px 20px rgba(11,17,34,.06);display:flex;flex-direction:column}
+    .card img{width:100%;height:160px;object-fit:cover}
+    .card .body{padding:12px;flex:1}
+    .title{font-size:1rem;margin:0 0 6px}
+    .meta{color:var(--muted);font-size:.9rem;margin-bottom:6px}
+    .price{font-weight:800}
+    .rating{display:inline-block;background:#f1f5f9;padding:4px 8px;border-radius:999px;font-weight:700;margin-left:8px;font-size:.85rem}
+    footer{padding:16px;text-align:center;color:var(--muted);margin-top:30px}
+    @media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:640px){.grid{grid-template-columns:1fr}.search{flex-direction:column;align-items:stretch}}
+    /* modal */
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;z-index:60}
+    .panel{background:white;border-radius:12px;padding:18px;max-width:920px;width:94%;max-height:85vh;overflow:auto}
+    .form-row{display:flex;gap:8px}
+    .form-row > *{flex:1}
+    input,select,textarea{padding:10px;border-radius:8px;border:1px solid #eaf2f8;width:100%}
+    label.small{font-size:.85rem;color:var(--muted)}
+    .topbar-user{background:rgba(255,255,255,.06);padding:8px;border-radius:8px;color:white;font-weight:600}
+    .thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .thumbs img{width:84px;height:70px;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px rgba(11,17,34,.06)}
+    .carousel{display:flex;gap:8px;align-items:center}
+    .carousel img{max-height:280px;object-fit:cover;border-radius:8px;width:100%}
+    .small-muted{color:var(--muted);font-size:.9rem}
+    .heart{cursor:pointer;font-weight:800;padding:6px 8px;border-radius:8px}
+    .fav-on{background:#ffdfcc}
+    .review{border-top:1px solid #eef3f8;padding-top:8px;margin-top:8px}
+    .dashboard-list{display:grid;gap:8px}
+    .pill{display:inline-block;padding:6px 8px;border-radius:999px;background:#f2f7ff;font-weight:700}
+    
+    /* Leaflet map container styles */
+    #ownerMap, #editMap {
+      height: 260px;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #eaeef6;
+    }
+    .leaflet-container {
+      background: #eaeef6;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+</head>
+<body>
+  <header>
+    <h1 onclick="location.reload()">Locator</h1>
+    <div class="header-right">
+      <div id="userArea"></div>
+      <button id="dashboardBtn" class="btn btn-ghost" style="display:none" onclick="openDashboard()">Dashboard</button>
+      <button id="addBtn" class="btn btn-ghost" style="display:none" onclick="openOwnerModal()">Add Listing</button>
+      <button id="profileBtn" class="btn btn-ghost" style="display:none" onclick="openProfile()">Profile</button>
+      <button id="loginBtn" class="btn btn-primary" onclick="openLogin()">Login / Register</button>
+      <button id="logoutBtn" class="btn" style="display:none;background:#ef4444;color:white" onclick="logout()">Logout</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="search">
+      <input id="barangayInput" placeholder="Enter barangay (case-insensitive)" />
+      <select id="typeInput">
+        <option value="">Any Type</option>
+        <option value="apartment">Apartment</option>
+        <option value="boarding_house">Boarding House</option>
+      </select>
+      <input id="minPrice" type="number" placeholder="Min Price" style="min-width:100px" />
+      <input id="maxPrice" type="number" placeholder="Max Price" style="min-width:100px" />
+      <button class="btn btn-primary" onclick="loadListings()">Search</button>
+      <div style="margin-left:auto">
+        <button class="btn" onclick="loadFavorites()">My Favorites</button>
+        <button class="btn" onclick="loadMyBookings()">My Bookings</button>
+      </div>
+    </section>
+
+    <h2 style="margin-top:10px">Available Rooms</h2>
+    <div id="listings" class="grid"></div>
+  </main>
+
+  <!-- Info Modal -->
+  <div id="infoModal" class="modal" onclick="if(event.target===this) closeInfoModal()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div>
+          <h3 id="modalTitle"></h3>
+          <div class="small-muted">Type: <span id="modalType"></span> · Owner: <span id="modalOwner"></span> · Barangay: <span id="modalBarangay"></span></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div id="favBtnWrap"></div>
+          <div class="rating">Avg: <span id="modalRating"></span> ★ <span class="small-muted" id="modalReviewCount"></span></div>
+          <button onclick="closeInfoModal()">✕</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px">
+        <div id="carouselMain" class="carousel"></div>
+        <div id="carouselThumbs" class="thumbs"></div>
+      </div>
+
+      <p class="price" style="margin-top:10px">₱<span id="modalPrice"></span></p>
+      <p id="modalDesc"></p>
+      <p class="small-muted">Address: <span id="modalAddress"></span></p>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn btn-primary" onclick="openBookingModal()">Reserve</button>
+        <button class="btn" onclick="openDirectionsFromModal()">Destination</button>
+      </div>
+
+      <hr style="margin-top:12px">
+
+      <div>
+        <h4>Reviews</h4>
+        <div id="reviewsList"></div>
+
+        <div style="margin-top:10px">
+          <h5>Add review</h5>
+          <select id="reviewRating"><option value="5">5</option><option value="4">4</option><option value="3">3</option><option value="2">2</option><option value="1">1</option></select>
+          <textarea id="reviewComment" placeholder="Write a review..." style="width:100%;margin-top:6px"></textarea>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="submitReview()">Submit Review</button>
+            <button class="btn" onclick="clearReviewForm()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Booking Modal -->
+  <div id="bookingModal" class="modal" onclick="if(event.target===this) closeBookingModal()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Reserve</h3>
+        <button onclick="closeBookingModal()">✕</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <div id="bookingListingTitle" style="font-weight:700"></div>
+        <label class="small">Start date</label>
+        <input id="bookingStart" type="text" placeholder="Select start date" />
+        <label class="small">End date</label>
+        <input id="bookingEnd" type="text" placeholder="Select end date" />
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="submitBooking()">Request Reservation</button>
+          <button class="btn" onclick="closeBookingModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal" onclick="if(event.target===this) closeLogin()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Login / Register</h3>
+        <button onclick="closeLogin()">✕</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <input id="username" placeholder="Username" />
+        <input id="password" type="password" placeholder="Password" />
+        <select id="roleSelect">
+          <option value="renter">Renter</option>
+          <option value="owner">Owner</option>
+        </select>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="doLogin()">Login</button>
+          <button class="btn" onclick="doRegister()">Register</button>
+          <button class="btn" onclick="closeLogin()">Cancel</button>
+        </div>
+        <p class="small" style="margin-top:6px">Owners can add listings after logging in.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Modal -->
+  <div id="profileModal" class="modal" onclick="if(event.target===this) closeProfile()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Profile</h3>
+        <button onclick="closeProfile()">✕</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <input id="profileFullName" placeholder="Full name" />
+        <input id="profilePhone" placeholder="Phone number" />
+        <input id="profilePassword" placeholder="New password (leave blank to keep)" type="password" />
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="saveProfile()">Save</button>
+          <button class="btn" onclick="closeProfile()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Owner Add Modal -->
+  <div id="ownerModal" class="modal" onclick="if(event.target===this) closeOwnerModal()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Add Listing</h3>
+        <button onclick="closeOwnerModal()">✕</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <input id="title" placeholder="Title (e.g. 2BR near plaza)" />
+        <input id="address" placeholder="Address" />
+        <input id="barangay" placeholder="Barangay" />
+        <select id="type">
+          <option value="apartment">Apartment</option>
+          <option value="boarding_house">Boarding House</option>
+        </select>
+        <input id="price" placeholder="Price (₱)" type="number" />
+        <textarea id="description" placeholder="Short description"></textarea>
+
+        <label class="small">Images (optional) — select multiple</label>
+        <input id="imageFile" type="file" accept="image/*" multiple />
+        <div id="imagePreview" class="thumbs"></div>
+
+        <label class="small">Pick exact location on the map (or type lat/lng)</label>
+        <div id="ownerMap" style="width:100%;height:260px;border-radius:8px;overflow:hidden;background:#eaeef6"></div>
+
+        <div class="form-row">
+          <input id="latitude" placeholder="Latitude" />
+          <input id="longitude" placeholder="Longitude" />
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="submitListing()">Save</button>
+          <button class="btn" onclick="closeOwnerModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Owner Edit Modal -->
+  <div id="editModal" class="modal" onclick="if(event.target===this) closeEditModal()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Edit Listing</h3>
+        <button onclick="closeEditModal()">✕</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <input id="editTitle" placeholder="Title (e.g. 2BR near plaza)" />
+        <input id="editAddress" placeholder="Address" />
+        <input id="editBarangay" placeholder="Barangay" />
+        <select id="editType">
+          <option value="apartment">Apartment</option>
+          <option value="boarding_house">Boarding House</option>
+        </select>
+        <input id="editPrice" placeholder="Price (₱)" type="number" />
+        <textarea id="editDescription" placeholder="Short description"></textarea>
+
+        <label class="small">Current Images</label>
+        <div id="editImagePreview" class="thumbs"></div>
+
+        <label class="small">Add More Images (optional)</label>
+        <input id="editImageFile" type="file" accept="image/*" multiple />
+        <div id="editNewImagePreview" class="thumbs"></div>
+
+        <label class="small">Location (lat/lng)</label>
+        <div id="editMap" style="width:100%;height:260px;border-radius:8px;overflow:hidden;background:#eaeef6"></div>
+
+        <div class="form-row">
+          <input id="editLatitude" placeholder="Latitude" />
+          <input id="editLongitude" placeholder="Longitude" />
+        </div>
+
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="submitEditListing()">Save Changes</button>
+          <button class="btn" onclick="closeEditModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Modal (owner/admin) -->
+  <div id="dashboardModal" class="modal" onclick="if(event.target===this) closeDashboard()">
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3>Dashboard</h3>
+        <button onclick="closeDashboard()">✕</button>
+      </div>
+
+      <div style="margin-top:8px">
+        <h4>My listings</h4>
+        <div id="dashboardListings" class="dashboard-list"></div>
+
+        <h4 style="margin-top:12px">Bookings</h4>
+        <div id="dashboardBookings" class="dashboard-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>&copy; 2025 Locator (v2)</footer>
+
+<script>
+/* --------- Config / state --------- */
+const API_BASE = '/api';
+let token = localStorage.getItem('token') || null;
+let currentUser = null;
+let currentListingModal = null;
+let currentEditListing = null;
+
+/* --------- helpers --------- */
+function showToast(msg) { alert(msg); } // replace later with nicer toasts
+
+async function apiFetch(path, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  if (opts.body && !(opts.body instanceof FormData) && typeof opts.body === 'object') {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const res = await fetch(API_BASE + path, opts);
+  if (!res.ok) {
+    const err = await res.json().catch(()=>({ error: 'Server error' }));
+    throw err;
+  }
+  return res.json();
+}
+
+function getDatesBetween(startDate, endDate) {
+  const dates = [];
+  let current = new Date(startDate);
+  const end = new Date(endDate);
+  while (current <= end) {
+    dates.push(new Date(current).toISOString().split('T')[0]);
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+}
+
+/* --------- Auth / UI state --------- */
+async function refreshUser() {
+  if (!token) { currentUser = null; updateHeader(); return; }
+  try {
+    const me = await apiFetch('/me');
+    currentUser = me;
+    updateHeader();
+  } catch (e) {
+    console.warn('token invalid', e);
+    token = null; localStorage.removeItem('token');
+    currentUser = null;
+    updateHeader();
+  }
+}
+
+function updateHeader() {
+  const userArea = document.getElementById('userArea');
+  const addBtn = document.getElementById('addBtn');
+  const loginBtn = document.getElementById('loginBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const profileBtn = document.getElementById('profileBtn');
+  const dashboardBtn = document.getElementById('dashboardBtn');
+  const myBookingsBtn = document.querySelector('button[onclick="loadMyBookings()"]');
+
+  if (currentUser) {
+    userArea.innerHTML = `<div class="topbar-user">${escapeHtml(currentUser.username)} (${escapeHtml(currentUser.role)})</div>`;
+    loginBtn.style.display = 'none';
+    logoutBtn.style.display = 'inline-block';
+    profileBtn.style.display = 'inline-block';
+    dashboardBtn.style.display = (currentUser.role === 'owner' || currentUser.role === 'admin') ? 'inline-block' : 'none';
+    if (currentUser.role === 'owner') addBtn.style.display = 'inline-block';
+    else addBtn.style.display = 'none';
+    if (myBookingsBtn) {
+      myBookingsBtn.textContent = (currentUser.role === 'owner' || currentUser.role === 'admin') ? 'Booking Requests' : 'My Bookings';
+    }
+  } else {
+    userArea.innerHTML = '';
+    loginBtn.style.display = 'inline-block';
+    logoutBtn.style.display = 'none';
+    profileBtn.style.display = 'none';
+    addBtn.style.display = 'none';
+    dashboardBtn.style.display = 'none';
+  }
+}
+
+/* --------- Login / Register --------- */
+function openLogin(){ document.getElementById('loginModal').style.display = 'flex'; }
+function closeLogin(){ document.getElementById('loginModal').style.display = 'none'; }
+
+async function doLogin(){
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  if (!username || !password) return showToast('Enter username & password');
+  try {
+    const res = await fetch(API_BASE + '/login', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password })
+    });
+    const j = await res.json();
+    if (!res.ok) return showToast(j.error || j.message || 'Login failed');
+    token = j.token;
+    localStorage.setItem('token', token);
+    await refreshUser();
+    closeLogin();
+    showToast('Logged in');
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Login error');
+  }
+}
+
+async function doRegister(){
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const role = document.getElementById('roleSelect').value;
+  if (!username || !password) return showToast('Enter username & password');
+  try {
+    const res = await fetch(API_BASE + '/register', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password, role })
+    });
+    const j = await res.json();
+    if (!res.ok) return showToast(j.error || j.message || 'Register failed');
+    token = j.token;
+    localStorage.setItem('token', token);
+    await refreshUser();
+    closeLogin();
+    showToast('Registered & logged in');
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Register error');
+  }
+}
+
+function logout(){
+  token = null;
+  localStorage.removeItem('token');
+  currentUser = null;
+  updateHeader();
+  showToast('Logged out');
+}
+
+/* --------- Listings --------- */
+async function loadListings() {
+  try {
+    const barangay = document.getElementById('barangayInput').value.trim();
+    const type = document.getElementById('typeInput').value;
+    const minPrice = document.getElementById('minPrice').value;
+    const maxPrice = document.getElementById('maxPrice').value;
+    const params = new URLSearchParams();
+    if (barangay) params.set('barangay', barangay);
+    if (type) params.set('type', type);
+    if (minPrice) params.set('min_price', minPrice);
+    if (maxPrice) params.set('max_price', maxPrice);
+    const items = await apiFetch('/listings?' + params.toString());
+    renderListings(items);
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to load listings');
+  }
+}
+
+function formatType(t) {
+  return t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function renderListings(items) {
+  const container = document.getElementById('listings');
+  container.innerHTML = '';
+  if (!items || !items.length) {
+    container.innerHTML = `<div style="grid-column:1/-1;padding:18px;background:white;border-radius:12px">No listings yet</div>`;
+    return;
+  }
+  for (const it of items) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const img = (it.images && it.images.length) ? it.images[0] : (it.image || '/placeholder.jpg');
+    card.innerHTML = `
+      <img src="${escapeAttr(img)}" alt="${escapeHtml(it.title)}">
+      <div class="body">
+        <h4 class="title">${escapeHtml(it.title)}</h4>
+        <p class="meta">Type: ${escapeHtml(formatType(it.type))} · Barangay: ${escapeHtml(it.barangay)} · Address: ${escapeHtml(it.address)} · Owner: ${escapeHtml(it.owner_name)} <span class="rating">★ ${escapeHtml(it.avg_rating || '0')}</span></p>
+        <p class="price">₱${Number(it.price).toLocaleString()}</p>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick='viewListing(${it.id})'>View</button>
+          <button class="btn" onclick='openDirections(${it.latitude},${it.longitude})'>Destination</button>
+          <div style="margin-left:auto">
+            <button class="btn heart ${it.is_favorited ? "fav-on":""}" onclick="toggleFav(event, ${it.id})">${it.is_favorited ? '♥' : '♡'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  }
+}
+
+async function viewListing(id) {
+  try {
+    const it = await apiFetch('/listings/' + id);
+    currentListingModal = it;
+    document.getElementById('modalTitle').textContent = it.title;
+    document.getElementById('modalType').textContent = formatType(it.type);
+    document.getElementById('modalOwner').textContent = it.owner_name;
+    document.getElementById('modalBarangay').textContent = it.barangay;
+    document.getElementById('modalAddress').textContent = it.address;
+    document.getElementById('modalPrice').textContent = Number(it.price).toLocaleString();
+    document.getElementById('modalDesc').textContent = it.description || '';
+    document.getElementById('modalRating').textContent = it.avg_rating || '0';
+    document.getElementById('modalReviewCount').textContent = (it.review_count || 0) + ' reviews';
+
+    const favWrap = document.getElementById('favBtnWrap');
+    favWrap.innerHTML = `<button id="modalFavBtn" class="btn heart ${it.is_favorited ? "fav-on":""}" onclick="toggleFavModal(${it.id})">${it.is_favorited ? '♥ Favorited' : '♡ Favorite'}</button>`;
+
+    const carouselMain = document.getElementById('carouselMain');
+    const carouselThumbs = document.getElementById('carouselThumbs');
+    carouselMain.innerHTML = '';
+    carouselThumbs.innerHTML = '';
+    const images = it.images && it.images.length ? it.images : (it.image ? [it.image] : ['/placeholder.jpg']);
+    const imgMain = document.createElement('img');
+    imgMain.src = images[0];
+    carouselMain.appendChild(imgMain);
+
+    images.forEach((src, idx) => {
+      const thumb = document.createElement('img');
+      thumb.src = src;
+      thumb.onclick = () => { imgMain.src = src; };
+      carouselThumbs.appendChild(thumb);
+    });
+
+    renderReviews(it.reviews || []);
+
+    document.getElementById('infoModal').style.display = 'flex';
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to fetch listing');
+  }
+}
+
+function closeInfoModal(){ document.getElementById('infoModal').style.display = 'none'; }
+
+/* --------- Reviews --------- */
+function renderReviews(reviews) {
+  const el = document.getElementById('reviewsList');
+  el.innerHTML = '';
+  if (!reviews || !reviews.length) {
+    el.innerHTML = '<div class="small-muted">No reviews yet.</div>';
+    return;
+  }
+  for (const r of reviews) {
+    const div = document.createElement('div');
+    div.className = 'review';
+    div.innerHTML = `<div style="display:flex;justify-content:space-between"><div><strong>${escapeHtml(r.username)}</strong> · ${escapeHtml(r.rating)}★</div><div class="small-muted">${new Date(r.created_at).toLocaleString()}</div></div><div style="margin-top:6px">${escapeHtml(r.comment || '')}</div>`;
+    el.appendChild(div);
+  }
+}
+
+async function submitReview(){
+  if (!token) return showToast('Login to submit a review');
+  if (!currentListingModal) return;
+  const rating = Number(document.getElementById('reviewRating').value);
+  const comment = document.getElementById('reviewComment').value.trim();
+  try {
+    await apiFetch(`/listings/${currentListingModal.id}/reviews`, {
+      method: 'POST',
+      body: { rating, comment }
+    });
+    showToast('Review added');
+    await viewListing(currentListingModal.id);
+    clearReviewForm();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to add review');
+  }
+}
+
+function clearReviewForm() {
+  document.getElementById('reviewRating').value = '5';
+  document.getElementById('reviewComment').value = '';
+}
+
+/* --------- Favorite / Wishlist --------- */
+async function toggleFav(e, listingId) {
+  e.stopPropagation();
+  try {
+    await apiFetch(`/listings/${listingId}/favorite`, { method: 'POST' });
+    await loadListings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Favorite error');
+  }
+}
+async function toggleFavModal(listingId) {
+  try {
+    await apiFetch(`/listings/${listingId}/favorite`, { method: 'POST' });
+    await viewListing(listingId);
+    await loadListings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Favorite error');
+  }
+}
+async function loadFavorites() {
+  if (!token) return showToast('Login to see favorites');
+  try {
+    const favs = await apiFetch('/favorites');
+    renderListings(favs);
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to load favorites');
+  }
+}
+
+/* --------- Booking flow --------- */
+async function openBookingModal(){
+  if (!currentListingModal) return;
+  document.getElementById('bookingListingTitle').textContent = currentListingModal.title;
+  document.getElementById('bookingStart').value = '';
+  document.getElementById('bookingEnd').value = '';
+  document.getElementById('bookingModal').style.display = 'flex';
+
+  try {
+    const booked = await apiFetch(`/listings/${currentListingModal.id}/booked_dates`);
+    const disableRanges = booked.map(b => ({ from: b.from, to: b.to }));
+
+    flatpickr("#bookingStart", {
+      minDate: "today",
+      dateFormat: "Y-m-d",
+      disable: disableRanges
+    });
+    flatpickr("#bookingEnd", {
+      minDate: "today",
+      dateFormat: "Y-m-d",
+      disable: disableRanges
+    });
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to load availability - dates may overlap');
+  }
+}
+function closeBookingModal(){ document.getElementById('bookingModal').style.display = 'none'; }
+
+async function submitBooking(){
+  if (!token) return showToast('Login as renter to reserve');
+  if (!currentListingModal) return;
+  const start = document.getElementById('bookingStart').value;
+  const end = document.getElementById('bookingEnd').value;
+  if (!start || !end) return showToast('Select start and end dates');
+  if (new Date(start) > new Date(end)) return showToast('Start date must be before end date');
+  try {
+    await apiFetch('/bookings', {
+      method: 'POST',
+      body: { listing_id: currentListingModal.id, start_date: start, end_date: end }
+    });
+    showToast('Booking requested (pending approval)');
+    closeBookingModal();
+    await loadMyBookings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Booking error');
+  }
+}
+
+/* --------- Directions --------- */
+function openDirections(lat, lng) {
+  // Open directions in OpenStreetMap
+  const osmUrl = `https://www.openstreetmap.org/directions?from=&to=${lat},${lng}`;
+  window.open(osmUrl, '_blank');
+}
+function openDirectionsFromModal(){ if (!currentListingModal) return; openDirections(currentListingModal.latitude, currentListingModal.longitude); }
+
+/* --------- Map: owner pick location (Leaflet) --------- */
+let ownerMap, ownerMarker;
+function initOwnerMap() {
+  const mapEl = document.getElementById('ownerMap');
+  mapEl.innerHTML = ''; // Clear any previous content
+  
+  // Default coordinates (Manila area)
+  const defaultLat = 14.5833;
+  const defaultLng = 121.0000;
+  
+  // Initialize map
+  ownerMap = L.map('ownerMap').setView([defaultLat, defaultLng], 13);
+  
+  // Add tile layer (OpenStreetMap)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(ownerMap);
+  
+  // Add click handler
+  ownerMap.on('click', function(e) {
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
+    
+    // Remove existing marker
+    if (ownerMarker) {
+      ownerMap.removeLayer(ownerMarker);
+    }
+    
+    // Add new marker
+    ownerMarker = L.marker([lat, lng]).addTo(ownerMap);
+    
+    // Update form fields
+    document.getElementById('latitude').value = lat.toFixed(7);
+    document.getElementById('longitude').value = lng.toFixed(7);
+  });
+  
+  // If there are existing coordinates, add a marker
+  const latInput = document.getElementById('latitude').value;
+  const lngInput = document.getElementById('longitude').value;
+  if (latInput && lngInput) {
+    const lat = parseFloat(latInput);
+    const lng = parseFloat(lngInput);
+    ownerMarker = L.marker([lat, lng]).addTo(ownerMap);
+    ownerMap.setView([lat, lng], 13);
+  }
+}
+
+/* --------- Add listing (owner) --------- */
+function openOwnerModal(){
+  if (!currentUser || currentUser.role !== 'owner') return showToast('Login as owner first');
+  document.getElementById('ownerModal').style.display = 'flex';
+  document.getElementById('title').value = '';
+  document.getElementById('address').value = '';
+  document.getElementById('barangay').value = '';
+  document.getElementById('type').value = 'boarding_house';
+  document.getElementById('price').value = '';
+  document.getElementById('description').value = '';
+  document.getElementById('latitude').value = '';
+  document.getElementById('longitude').value = '';
+  document.getElementById('imageFile').value = '';
+  document.getElementById('imagePreview').innerHTML = '';
+  setTimeout(() => {
+    initOwnerMap();
+  }, 180);
+}
+function closeOwnerModal(){ document.getElementById('ownerModal').style.display = 'none'; }
+
+document.getElementById('imageFile').addEventListener('change', () => {
+  const files = document.getElementById('imageFile').files;
+  const preview = document.getElementById('imagePreview');
+  preview.innerHTML = '';
+  for (const f of files) {
+    const r = new FileReader();
+    r.onload = (e) => {
+      const img = document.createElement('img');
+      img.src = e.target.result;
+      preview.appendChild(img);
+    };
+    r.readAsDataURL(f);
+  }
+});
+
+async function submitListing(){
+  try {
+    if (!token) return showToast('Login as owner first');
+    const title = document.getElementById('title').value.trim();
+    const address = document.getElementById('address').value.trim();
+    const barangay = document.getElementById('barangay').value.trim();
+    const type = document.getElementById('type').value;
+    const price = document.getElementById('price').value;
+    const description = document.getElementById('description').value;
+    const latitude = document.getElementById('latitude').value;
+    const longitude = document.getElementById('longitude').value;
+    const files = document.getElementById('imageFile').files;
+
+    if (!title || !address || !barangay || !type || !price || !latitude || !longitude) return showToast('Fill required fields and pick location on map');
+
+    const form = new FormData();
+    form.append('title', title);
+    form.append('address', address);
+    form.append('barangay', barangay);
+    form.append('type', type);
+    form.append('price', price);
+    form.append('description', description);
+    form.append('latitude', latitude);
+    form.append('longitude', longitude);
+    for (const f of files) form.append('images', f);
+
+    await apiFetch('/listings', { method: 'POST', body: form });
+    showToast('Listing added');
+    closeOwnerModal();
+    loadListings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Add listing error');
+  }
+}
+
+/* --------- Edit listing (owner) --------- */
+let editMap, editMarker;
+function initEditMap(lat, lng) {
+  const mapEl = document.getElementById('editMap');
+  mapEl.innerHTML = ''; // Clear any previous content
+  
+  const position = [Number(lat), Number(lng)];
+  
+  // Initialize map
+  editMap = L.map('editMap').setView(position, 13);
+  
+  // Add tile layer
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  }).addTo(editMap);
+  
+  // Add marker
+  editMarker = L.marker(position).addTo(editMap);
+  
+  // Add click handler
+  editMap.on('click', function(e) {
+    const newLat = e.latlng.lat;
+    const newLng = e.latlng.lng;
+    
+    // Update marker position
+    editMarker.setLatLng([newLat, newLng]);
+    
+    // Update form fields
+    document.getElementById('editLatitude').value = newLat.toFixed(7);
+    document.getElementById('editLongitude').value = newLng.toFixed(7);
+  });
+}
+
+async function openEditModal(id) {
+  if (!currentUser || currentUser.role !== 'owner') return showToast('Login as owner first');
+  try {
+    const it = await apiFetch('/listings/' + id);
+    currentEditListing = it;
+    document.getElementById('editTitle').value = it.title;
+    document.getElementById('editAddress').value = it.address;
+    document.getElementById('editBarangay').value = it.barangay;
+    document.getElementById('editType').value = it.type;
+    document.getElementById('editPrice').value = it.price;
+    document.getElementById('editDescription').value = it.description || '';
+    document.getElementById('editLatitude').value = it.latitude;
+    document.getElementById('editLongitude').value = it.longitude;
+
+    const preview = document.getElementById('editImagePreview');
+    preview.innerHTML = '';
+    const images = it.images || [];
+    images.forEach(src => {
+      const img = document.createElement('img');
+      img.src = src;
+      preview.appendChild(img);
+    });
+
+    document.getElementById('editImageFile').value = '';
+    document.getElementById('editNewImagePreview').innerHTML = '';
+
+    document.getElementById('editModal').style.display = 'flex';
+
+    setTimeout(() => {
+      initEditMap(it.latitude, it.longitude);
+    }, 180);
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to load listing for edit');
+  }
+}
+function closeEditModal(){ document.getElementById('editModal').style.display = 'none'; }
+
+document.getElementById('editImageFile').addEventListener('change', () => {
+  const files = document.getElementById('editImageFile').files;
+  const preview = document.getElementById('editNewImagePreview');
+  preview.innerHTML = '';
+  for (const f of files) {
+    const r = new FileReader();
+    r.onload = (e) => {
+      const img = document.createElement('img');
+      img.src = e.target.result;
+      preview.appendChild(img);
+    };
+    r.readAsDataURL(f);
+  }
+});
+
+async function submitEditListing(){
+  try {
+    if (!token) return showToast('Login as owner first');
+    if (!currentEditListing) return;
+    const title = document.getElementById('editTitle').value.trim();
+    const address = document.getElementById('editAddress').value.trim();
+    const barangay = document.getElementById('editBarangay').value.trim();
+    const type = document.getElementById('editType').value;
+    const price = document.getElementById('editPrice').value;
+    const description = document.getElementById('editDescription').value;
+    const latitude = document.getElementById('editLatitude').value;
+    const longitude = document.getElementById('editLongitude').value;
+    const files = document.getElementById('editImageFile').files;
+
+    if (!title || !address || !barangay || !type || !price || !latitude || !longitude) return showToast('Fill required fields');
+
+    const form = new FormData();
+    form.append('title', title);
+    form.append('address', address);
+    form.append('barangay', barangay);
+    form.append('type', type);
+    form.append('price', price);
+    form.append('description', description);
+    form.append('latitude', latitude);
+    form.append('longitude', longitude);
+    for (const f of files) form.append('images', f);
+
+    await apiFetch('/listings/' + currentEditListing.id, { method: 'PATCH', body: form });
+    showToast('Listing updated');
+    closeEditModal();
+    loadListings();
+    loadDashboard();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Edit listing error');
+  }
+}
+
+/* --------- Profile --------- */
+function openProfile(){ 
+  document.getElementById('profileModal').style.display = 'flex';
+  document.getElementById('profileFullName').value = currentUser?.full_name || '';
+  document.getElementById('profilePhone').value = currentUser?.phone || '';
+  document.getElementById('profilePassword').value = '';
+}
+function closeProfile(){ document.getElementById('profileModal').style.display = 'none'; }
+
+async function saveProfile(){
+  if (!token) return showToast('Login first');
+  const full_name = document.getElementById('profileFullName').value.trim();
+  const phone = document.getElementById('profilePhone').value.trim();
+  const password = document.getElementById('profilePassword').value;
+  try {
+    await apiFetch('/me', { method: 'PUT', body: { full_name, phone, password } });
+    showToast('Profile updated');
+    await refreshUser();
+    closeProfile();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to update profile');
+  }
+}
+
+/* --------- Dashboard (owner) --------- */
+function openDashboard(){ document.getElementById('dashboardModal').style.display = 'flex'; loadDashboard(); }
+function closeDashboard(){ document.getElementById('dashboardModal').style.display = 'none'; }
+
+async function loadDashboard(){
+  try {
+    const [listings, bookings] = await Promise.all([ apiFetch('/my/listings'), apiFetch('/bookings') ]);
+    const dl = document.getElementById('dashboardListings');
+    dl.innerHTML = '';
+    if (!listings || !listings.length) dl.innerHTML = '<div class="small-muted">No listings</div>';
+    else listings.forEach(l => {
+      const el = document.createElement('div');
+      el.style.padding='8px'; el.style.background='white'; el.style.borderRadius='8px';
+      el.innerHTML = `<strong>${escapeHtml(l.title)}</strong> · ${escapeHtml(formatType(l.type))} · ₱${Number(l.price).toLocaleString()} · ${escapeHtml(l.barangay)} <div style="margin-top:6px"><button class="btn" onclick="openEditModal(${l.id})">Edit</button><button class="btn" onclick="deleteListing(${l.id})">Delete</button></div>`;
+      dl.appendChild(el);
+    });
+
+    const db = document.getElementById('dashboardBookings');
+    db.innerHTML = '';
+    if (!bookings || !bookings.length) db.innerHTML = '<div class="small-muted">No bookings</div>';
+    else bookings.forEach(b => {
+      const el = document.createElement('div');
+      el.style.padding='8px'; el.style.background='white'; el.style.borderRadius='8px';
+      el.innerHTML = `<div style="display:flex;justify-content:space-between"><div><strong>${escapeHtml(b.listing_title)}</strong> (${escapeHtml(b.status)})</div><div class="small-muted">${new Date(b.created_at).toLocaleString()}</div></div><div class="small-muted">Renter: ${escapeHtml(b.renter_name)}</div><div style="margin-top:6px">From: ${b.start_date} To: ${b.end_date}</div><div style="margin-top:8px">${b.status === 'pending' && (currentUser.role==='owner'||currentUser.role==='admin') ? `<button class="btn btn-primary" onclick="actBooking(${b.id}, 'approve')">Approve</button><button class="btn" onclick="actBooking(${b.id}, 'reject')">Reject</button>` : ''}</div>`;
+      db.appendChild(el);
+    });
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to load dashboard');
+  }
+}
+
+async function actBooking(id, action) {
+  try {
+    await apiFetch(`/bookings/${id}`, { method: 'PATCH', body: { action } });
+    showToast('Booking updated');
+    await loadDashboard();
+    await loadListings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Action failed');
+  }
+}
+
+/* --------- My bookings (renter/owner) --------- */
+async function loadMyBookings() {
+  if (!token) return showToast('Login to view bookings');
+  try {
+    const bookings = await apiFetch('/bookings');
+    const container = document.getElementById('listings');
+    container.innerHTML = '';
+    if (!bookings.length) {
+      container.innerHTML = `<div style="grid-column:1/-1;padding:18px;background:white;border-radius:12px">No bookings</div>`;
+      return;
+    }
+    bookings.forEach(b => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      let actions = '';
+      let userLabel = '';
+      if (currentUser.role === 'renter') {
+        userLabel = `<p class="small-muted">Owner: ${escapeHtml(b.owner_name)}</p>`;
+        if (b.status === 'pending') {
+          actions = `<button class="btn" onclick="cancelBooking(${b.id})">Cancel</button>`;
+        }
+      } else if (currentUser.role === 'owner' || currentUser.role === 'admin') {
+        userLabel = `<p class="small-muted">Renter: ${escapeHtml(b.renter_name)}</p>`;
+        if (b.status === 'pending') {
+          actions = `<button class="btn btn-primary" onclick="actBooking(${b.id}, 'approve')">Approve</button><button class="btn" onclick="actBooking(${b.id}, 'reject')">Reject</button>`;
+        }
+      }
+      card.innerHTML = `
+        <div class="body">
+          <h4 class="title">${escapeHtml(b.listing_title)}</h4>
+          <p class="meta">Type: ${escapeHtml(formatType(b.listing_type))} · From ${b.start_date} to ${b.end_date} · ${escapeHtml(b.status)}</p>
+          ${userLabel}
+          <div style="margin-top:8px">${actions}</div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Failed to load bookings');
+  }
+}
+
+async function cancelBooking(id) {
+  if (!confirm('Cancel this booking?')) return;
+  try {
+    await apiFetch(`/bookings/${id}`, { method: 'PATCH', body: { action: 'cancel' } });
+    showToast('Booking cancelled');
+    loadMyBookings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Cancel failed');
+  }
+}
+
+/* --------- Delete listing (owner) --------- */
+async function deleteListing(id) {
+  if (!confirm('Delete this listing?')) return;
+  try {
+    await apiFetch(`/listings/${id}`, { method: 'DELETE' });
+    showToast('Listing deleted');
+    await loadDashboard();
+    await loadListings();
+  } catch (err) {
+    console.error(err);
+    showToast(err.error || 'Delete failed');
+  }
+}
+
+/* --------- Utilities --------- */
+function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function escapeAttr(s){ return escapeHtml(s); }
+
+/* --------- Init --------- */
+document.addEventListener('DOMContentLoaded', async () => {
+  if (localStorage.getItem('token')) token = localStorage.getItem('token');
+  try {
+    await refreshUser();
+  } catch {}
+  loadListings();
+});
+</script>
+</body>
+</html>
